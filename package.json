@@ -1,0 +1,58 @@
+{
+  "name": "opendart-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that provides Korean DART (FSS electronic disclosure) data to AI agents like Claude, ChatGPT, and Cursor",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "bin": {
+    "opendart-mcp": "bin/opendart-mcp.js"
+  },
+  "files": [
+    "dist/src",
+    "dist/scripts",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/src/index.js",
+    "dev": "tsc && node dist/src/index.js",
+    "update-corp-codes": "tsc && node dist/scripts/update-corp-codes.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "dart",
+    "korean",
+    "finance",
+    "disclosure",
+    "ai-agent",
+    "financial-data",
+    "korea-stock",
+    "opendart",
+    "claude"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SongHyojun0228/OpenDart-MCP-Server"
+  },
+  "homepage": "https://github.com/SongHyojun0228/OpenDart-MCP-Server#readme",
+  "bugs": {
+    "url": "https://github.com/SongHyojun0228/OpenDart-MCP-Server/issues"
+  },
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.3.5",
+    "fastmcp": "^3.32.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "typescript": "^5.9.3"
+  }
+}
