@@ -17,6 +17,15 @@ const server = new FastMCP({
 registerDisclosureTools(server);
 registerFinancialTools(server);
 
-await server.start({
-  transportType: "stdio",
-});
+const port = process.env.PORT ? Number(process.env.PORT) : undefined;
+
+if (port) {
+  await server.start({
+    transportType: "httpStream",
+    httpStream: { port },
+  });
+} else {
+  await server.start({
+    transportType: "stdio",
+  });
+}
