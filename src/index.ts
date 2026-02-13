@@ -22,7 +22,7 @@ const port = process.env.PORT ? Number(process.env.PORT) : undefined;
 if (port) {
   await server.start({
     transportType: "httpStream",
-    httpStream: { port },
+    httpStream: { port, host: "0.0.0.0" },
   });
 } else {
   await server.start({
