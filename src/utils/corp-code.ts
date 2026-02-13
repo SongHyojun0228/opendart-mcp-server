@@ -1,6 +1,14 @@
-import { readFileSync, existsSync } from "node:fs";
+import {
+  readFileSync,
+  existsSync,
+  writeFileSync,
+  mkdirSync,
+} from "node:fs";
+import { inflateRawSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import os from "node:os";
+import { XMLParser } from "fast-xml-parser";
 
 interface CorpCodeData {
   byName: Record<string, string>;
@@ -14,24 +22,153 @@ export interface CompanySearchResult {
   stockCode: string;
 }
 
-// compiled to dist/src/utils/ → project root is ../../..
+// Data paths
+// 1) User cache: ~/.opendart-mcp/corp-codes.json (npx / global install)
+// 2) Local dev:  <project-root>/data/corp-codes.json (git clone)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_PATH = path.resolve(__dirname, "../../../data/corp-codes.json");
+const LOCAL_DATA_PATH = path.resolve(__dirname, "../../../data/corp-codes.json");
+const CACHE_DIR = path.join(os.homedir(), ".opendart-mcp");
+const CACHE_DATA_PATH = path.join(CACHE_DIR, "corp-codes.json");
 
 let cachedData: CorpCodeData | null = null;
+
+function getDataPath(): string | null {
+  if (existsSync(CACHE_DATA_PATH)) return CACHE_DATA_PATH;
+  if (existsSync(LOCAL_DATA_PATH)) return LOCAL_DATA_PATH;
+  return null;
+}
 
 function loadCorpCodes(): CorpCodeData {
   if (cachedData) return cachedData;
 
-  if (!existsSync(DATA_PATH)) {
+  const dataPath = getDataPath();
+  if (!dataPath) {
     throw new Error(
       "고유번호 데이터 파일이 없습니다. " +
-        "먼저 'npm run update-corp-codes'를 실행하세요.",
+        "서버를 재시작하거나 'npm run update-corp-codes'를 실행하세요.",
     );
   }
 
-  cachedData = JSON.parse(readFileSync(DATA_PATH, "utf-8")) as CorpCodeData;
+  cachedData = JSON.parse(readFileSync(dataPath, "utf-8")) as CorpCodeData;
   return cachedData;
+}
+
+// --- ZIP extraction ---
+function extractFirstFileFromZip(zipBuffer: Buffer): Buffer {
+  if (zipBuffer.readUInt32LE(0) !== 0x04034b50) {
+    throw new Error("유효하지 않은 ZIP 파일입니다.");
+  }
+  const compressionMethod = zipBuffer.readUInt16LE(8);
+  const compressedSize = zipBuffer.readUInt32LE(18);
+  const fileNameLength = zipBuffer.readUInt16LE(26);
+  const extraFieldLength = zipBuffer.readUInt16LE(28);
+  const dataOffset = 30 + fileNameLength + extraFieldLength;
+
+  if (compressionMethod === 0) {
+    return zipBuffer.subarray(dataOffset, dataOffset + compressedSize);
+  }
+  if (compressionMethod === 8) {
+    const compressed =
+      compressedSize > 0
+        ? zipBuffer.subarray(dataOffset, dataOffset + compressedSize)
+        : zipBuffer.subarray(dataOffset);
+    return inflateRawSync(compressed);
+  }
+  throw new Error(`지원하지 않는 압축 방식입니다: ${compressionMethod}`);
+}
+
+interface CorpCodeXmlItem {
+  corp_code: string | number;
+  corp_name: string;
+  stock_code: string | number;
+  modify_date: string | number;
+}
+
+/**
+ * Ensure corp-codes.json exists. Downloads automatically if missing.
+ * Called once at server startup.
+ */
+export async function ensureCorpCodes(): Promise<void> {
+  if (getDataPath()) return;
+
+  const apiKey = process.env.DART_API_KEY;
+  if (!apiKey) {
+    console.error(
+      "[OpenDART] DART_API_KEY가 없어 고유번호 자동 다운로드를 건너뜁니다.",
+    );
+    return;
+  }
+
+  console.error("[OpenDART] 고유번호 데이터를 자동 다운로드합니다 (최초 1회)...");
+
+  try {
+    const url = `https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${apiKey}`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+
+    if (!response.ok) {
+      throw new Error(`다운로드 실패: HTTP ${response.status}`);
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("json")) {
+      const body = (await response.json()) as {
+        status: string;
+        message: string;
+      };
+      throw new Error(
+        `DART API 오류: ${body.message} (status: ${body.status})`,
+      );
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const zipBuffer = Buffer.from(arrayBuffer);
+    const xmlBuffer = extractFirstFileFromZip(zipBuffer);
+    const xmlString = xmlBuffer.toString("utf-8");
+
+    const parser = new XMLParser({
+      isArray: (_tagName: string, jPath: string) => jPath === "result.list",
+    });
+    const parsed = parser.parse(xmlString) as {
+      result: { list: CorpCodeXmlItem[] };
+    };
+    const items = parsed.result.list;
+
+    const byName: Record<string, string> = {};
+    const byStockCode: Record<string, string> = {};
+    const byCorpCode: Record<string, { name: string; stockCode: string }> = {};
+
+    for (const item of items) {
+      const corpCode = String(item.corp_code).padStart(8, "0");
+      const corpName = String(item.corp_name).trim();
+      const rawStockCode = String(item.stock_code ?? "").trim();
+      const stockCode =
+        rawStockCode && rawStockCode !== "0"
+          ? rawStockCode.padStart(6, "0")
+          : "";
+
+      byName[corpName] = corpCode;
+      byCorpCode[corpCode] = { name: corpName, stockCode };
+      if (stockCode) {
+        byStockCode[stockCode] = corpCode;
+      }
+    }
+
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(
+      CACHE_DATA_PATH,
+      JSON.stringify({ byName, byStockCode, byCorpCode }),
+      "utf-8",
+    );
+
+    console.error(
+      `[OpenDART] 고유번호 다운로드 완료: ${items.length}개 기업`,
+    );
+  } catch (err) {
+    console.error(
+      "[OpenDART] 고유번호 자동 다운로드 실패:",
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 /**

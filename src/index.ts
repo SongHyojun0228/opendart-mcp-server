@@ -1,6 +1,10 @@
 import { FastMCP } from "fastmcp";
 import { registerDisclosureTools } from "./tools/disclosure.js";
 import { registerFinancialTools } from "./tools/financial.js";
+import { ensureCorpCodes } from "./utils/corp-code.js";
+
+// Auto-download corp codes on first run
+await ensureCorpCodes();
 
 const server = new FastMCP({
   name: "OpenDART",

@@ -2,6 +2,7 @@
 
 > AI 에이전트를 위한 한국 기업 공시 데이터 — powered by DART
 
+![npm](https://img.shields.io/npm/v/opendart-mcp)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![MCP](https://img.shields.io/badge/MCP-compatible-green)
 ![node](https://img.shields.io/badge/node-18%2B-brightgreen)
@@ -17,12 +18,21 @@ Claude Desktop, Cursor 등 MCP 지원 AI에게 "삼성전자 재무제표 보여
 
 ## ⚡ 빠른 시작
 
+### npm으로 바로 사용 (권장)
+
 ```bash
-git clone https://github.com/SongHyojun0228/OpenDart-MCP-Server.git
+npx opendart-mcp
+```
+
+> Claude Desktop이나 Cursor 설정에서 바로 사용할 수 있습니다. 기업 고유번호는 최초 실행 시 자동 다운로드됩니다.
+
+### 소스 코드에서 설치
+
+```bash
+git clone https://github.com/SongHyojun0228/opendart-mcp-server.git
 cd opendart-mcp-server
 npm install
-echo "DART_API_KEY=발급받은_키" > .env
-npm run update-corp-codes && npm run build && npm start
+npm run build && npm start
 ```
 
 > DART API 키는 [OpenDART](https://opendart.fss.or.kr) 에서 무료로 발급받을 수 있습니다 (일 10,000건).
@@ -101,7 +111,7 @@ npm run update-corp-codes && npm run build && npm start
 ### 2. 프로젝트 설치
 
 ```bash
-git clone https://github.com/SongHyojun0228/OpenDart-MCP-Server.git
+git clone https://github.com/SongHyojun0228/opendart-mcp-server.git
 cd opendart-mcp-server
 npm install
 ```
@@ -118,13 +128,13 @@ cp .env.example .env
 DART_API_KEY=여기에_발급받은_키_입력
 ```
 
-### 4. 기업 고유번호 데이터 다운로드
+### 4. 기업 고유번호 데이터 다운로드 (선택)
 
 ```bash
 npm run update-corp-codes
 ```
 
-> DART에 등록된 전체 기업(약 115,000개)의 고유번호를 다운로드합니다. 최초 1회만 실행하면 됩니다.
+> 서버 최초 실행 시 자동으로 다운로드되므로 이 단계는 선택사항입니다. 수동으로 업데이트하고 싶을 때만 실행하세요.
 
 ### 5. 빌드 & 실행
 
@@ -137,7 +147,7 @@ npm start
 
 ## ⚙️ AI 클라이언트 설정
 
-### Claude Desktop
+### Claude Desktop (npx — 권장)
 
 `claude_desktop_config.json`에 추가:
 
@@ -145,8 +155,8 @@ npm start
 {
   "mcpServers": {
     "opendart": {
-      "command": "node",
-      "args": ["/절대경로/opendart-mcp-server/dist/src/index.js"],
+      "command": "npx",
+      "args": ["-y", "opendart-mcp"],
       "env": {
         "DART_API_KEY": "발급받은_키"
       }
@@ -163,6 +173,25 @@ npm start
 
 </details>
 
+<details>
+<summary>소스 코드에서 직접 실행하는 경우</summary>
+
+```json
+{
+  "mcpServers": {
+    "opendart": {
+      "command": "node",
+      "args": ["/절대경로/opendart-mcp-server/dist/src/index.js"],
+      "env": {
+        "DART_API_KEY": "발급받은_키"
+      }
+    }
+  }
+}
+```
+
+</details>
+
 ### Cursor
 
 Cursor Settings → MCP → Add Server:
@@ -171,8 +200,8 @@ Cursor Settings → MCP → Add Server:
 {
   "mcpServers": {
     "opendart": {
-      "command": "node",
-      "args": ["/절대경로/opendart-mcp-server/dist/src/index.js"],
+      "command": "npx",
+      "args": ["-y", "opendart-mcp"],
       "env": {
         "DART_API_KEY": "발급받은_키"
       }
@@ -257,24 +286,14 @@ Ask your AI "What's Samsung Electronics' revenue?" and get real answers from off
 
 ### Quick Start
 
-```bash
-git clone https://github.com/SongHyojun0228/OpenDart-MCP-Server.git
-cd opendart-mcp-server
-npm install
-echo "DART_API_KEY=your_key" > .env
-npm run update-corp-codes && npm run build && npm start
-```
-
-Get your free DART API key at [opendart.fss.or.kr](https://opendart.fss.or.kr).
-
-### Claude Desktop Config
+Add to your Claude Desktop `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "opendart": {
-      "command": "node",
-      "args": ["/path/to/opendart-mcp-server/dist/src/index.js"],
+      "command": "npx",
+      "args": ["-y", "opendart-mcp"],
       "env": {
         "DART_API_KEY": "your_api_key"
       }
@@ -282,6 +301,8 @@ Get your free DART API key at [opendart.fss.or.kr](https://opendart.fss.or.kr).
   }
 }
 ```
+
+Get your free DART API key at [opendart.fss.or.kr](https://opendart.fss.or.kr). Corp code data is automatically downloaded on first run.
 
 ### License
 

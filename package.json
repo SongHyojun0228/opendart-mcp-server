@@ -35,13 +35,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/SongHyojun0228/OpenDart-MCP-Server"
+    "url": "git+https://github.com/SongHyojun0228/opendart-mcp-server.git"
   },
-  "homepage": "https://github.com/SongHyojun0228/OpenDart-MCP-Server#readme",
+  "homepage": "https://github.com/SongHyojun0228/opendart-mcp-server#readme",
   "bugs": {
-    "url": "https://github.com/SongHyojun0228/OpenDart-MCP-Server/issues"
+    "url": "https://github.com/SongHyojun0228/opendart-mcp-server/issues"
   },
-  "author": "",
+  "author": "SongHyojun0228",
   "license": "MIT",
   "engines": {
     "node": ">=18"
