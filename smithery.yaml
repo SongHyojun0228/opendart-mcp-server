@@ -1,0 +1,20 @@
+# Smithery configuration file: https://smithery.ai/docs/config
+
+build:
+  dockerBuildPath: .
+
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    required:
+      - dartApiKey
+    properties:
+      dartApiKey:
+        type: string
+        description: "DART OpenAPI key (https://opendart.fss.or.kr)"
+  commandFunction:
+    |-
+    (config) => ({ command: 'node', args: ['dist/src/index.js'], env: { DART_API_KEY: config.dartApiKey, PORT: '3000' } })
+  exampleConfig:
+    dartApiKey: "your_dart_api_key"
