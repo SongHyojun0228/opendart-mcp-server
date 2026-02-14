@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "config": {
+    "minPrice": 0.01,
+    "maxPrice": 1.00
+  },
+  "events": [
+    {
+      "name": "actor-start",
+      "pricePerEvent": 0.01,
+      "description": "Charged when the actor starts (standby wake-up)"
+    },
+    {
+      "name": "tool-request",
+      "pricePerEvent": 0.03,
+      "description": "Charged per MCP tool call (search_company, get_financial_summary, etc.)"
+    },
+    {
+      "name": "list-request",
+      "pricePerEvent": 0.001,
+      "description": "Charged when listing available tools"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "title": "OpenDART MCP Server Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "dartApiKey": {
+      "title": "DART API Key",
+      "type": "string",
+      "description": "Your DART OpenAPI key. Get one free at https://opendart.fss.or.kr",
+      "editor": "textfield",
+      "isSecret": true
+    }
+  },
+  "required": ["dartApiKey"]
+}

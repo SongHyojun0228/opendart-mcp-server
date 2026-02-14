@@ -1,0 +1,34 @@
+{
+  "actorSpecification": 1,
+  "name": "opendart-mcp-server",
+  "title": "OpenDART MCP Server",
+  "description": "MCP server providing Korean DART (FSS electronic disclosure) financial data to AI agents. Search companies, disclosures, and financial statements.",
+  "version": "0.1.0",
+  "buildTag": "latest",
+  "environmentVariables": [],
+  "usesStandbyMode": true,
+  "webServerMcpPath": "/mcp",
+  "dockerfile": "../Dockerfile.apify",
+  "input": "./input_schema.json",
+  "storages": {
+    "dataset": {
+      "actorSpecification": 1,
+      "title": "OpenDART Results",
+      "views": {
+        "overview": {
+          "title": "Overview",
+          "transformation": {
+            "fields": ["tool", "result"]
+          },
+          "display": {
+            "component": "table",
+            "properties": {
+              "tool": { "label": "Tool", "format": "text" },
+              "result": { "label": "Result", "format": "text" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

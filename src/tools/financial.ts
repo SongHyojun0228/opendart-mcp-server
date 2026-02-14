@@ -286,6 +286,146 @@ function formatFullStatements(
   return lines.join("\n");
 }
 
+// --- Exported execute functions (reusable from Apify Actor) ---
+
+export async function executeGetFinancialSummary({
+  company,
+  year,
+  quarter,
+  consolidated,
+}: {
+  company: string;
+  year?: number;
+  quarter?: "Q1" | "Q2" | "Q3" | "annual";
+  consolidated?: boolean;
+}): Promise<string> {
+  const corpCode = resolveCorpCode(company);
+  const bsnsYear = year ?? new Date().getFullYear() - 1;
+  const qtr = quarter ?? "annual";
+  const isConsolidated = consolidated ?? true;
+  const fsDiv = isConsolidated ? "CFS" : "OFS";
+
+  const client = getDartClient();
+  const data = await client.request<FinancialResponse>(
+    "fnlttSinglAcnt.json",
+    {
+      corp_code: corpCode,
+      bsns_year: String(bsnsYear),
+      reprt_code: REPRT_CODE_MAP[qtr],
+      fs_div: fsDiv,
+    },
+  );
+
+  const accounts = extractAccounts(data.list, fsDiv);
+
+  return formatFinancialSummary(
+    company,
+    bsnsYear,
+    qtr,
+    isConsolidated,
+    accounts,
+  );
+}
+
+export async function executeCompareFinancials({
+  companies,
+  year,
+  quarter,
+}: {
+  companies: string[];
+  year?: number;
+  quarter?: "Q1" | "Q2" | "Q3" | "annual";
+}): Promise<string> {
+  const bsnsYear = year ?? new Date().getFullYear() - 1;
+  const qtr = quarter ?? "annual";
+
+  const resolved: { name: string; corpCode: string }[] = [];
+  for (const c of companies) {
+    const corpCode = resolveCorpCode(c);
+    const matches = searchCompanies(c);
+    const officialName =
+      matches.find((m) => m.corpCode === corpCode)?.corpName ?? c;
+    resolved.push({ name: officialName, corpCode });
+  }
+
+  const corpCodes = resolved.map((r) => r.corpCode).join(",");
+
+  const client = getDartClient();
+  const data = await client.request<FinancialResponse>(
+    "fnlttMultiAcnt.json",
+    {
+      corp_code: corpCodes,
+      bsns_year: String(bsnsYear),
+      reprt_code: REPRT_CODE_MAP[qtr],
+    },
+  );
+
+  const companyAccounts = new Map<
+    string,
+    Map<string, AccountData>
+  >();
+
+  for (const r of resolved) {
+    const items = data.list.filter(
+      (i) => i.corp_code === r.corpCode,
+    );
+    const hasCFS = items.some((i) => i.fs_div === "CFS");
+    const accounts = extractAccounts(items, hasCFS ? "CFS" : "OFS");
+    companyAccounts.set(r.corpCode, accounts);
+  }
+
+  return formatComparisonTable(
+    resolved,
+    companyAccounts,
+    bsnsYear,
+    qtr,
+  );
+}
+
+export async function executeGetFullFinancialStatements({
+  company,
+  year,
+  quarter,
+  consolidated,
+  statement_type,
+}: {
+  company: string;
+  year?: number;
+  quarter?: "Q1" | "Q2" | "Q3" | "annual";
+  consolidated?: boolean;
+  statement_type?: "BS" | "IS" | "CIS" | "CF" | "SCE" | "all";
+}): Promise<string> {
+  const corpCode = resolveCorpCode(company);
+  const bsnsYear = year ?? new Date().getFullYear() - 1;
+  const qtr = quarter ?? "annual";
+  const fsDiv = (consolidated ?? true) ? "CFS" : "OFS";
+  const stmtType = statement_type ?? "all";
+
+  const client = getDartClient();
+  const data = await client.request<FullStatementResponse>(
+    "fnlttSinglAcntAll.json",
+    {
+      corp_code: corpCode,
+      bsns_year: String(bsnsYear),
+      reprt_code: REPRT_CODE_MAP[qtr],
+      fs_div: fsDiv,
+    },
+  );
+
+  const items =
+    stmtType === "all"
+      ? data.list
+      : data.list.filter((i) => i.sj_div === stmtType);
+
+  return formatFullStatements(
+    company,
+    bsnsYear,
+    qtr,
+    fsDiv === "CFS",
+    items,
+  );
+}
+
 export function registerFinancialTools(server: FastMCP) {
   server.addTool({
     name: "get_financial_summary",
@@ -317,38 +457,8 @@ export function registerFinancialTools(server: FastMCP) {
           "Use consolidated financial statements (연결재무제표). Default: true.",
         ),
     }),
-    execute: async ({ company, year, quarter, consolidated }) => {
-      const corpCode = resolveCorpCode(company);
-      const bsnsYear = year ?? new Date().getFullYear() - 1;
-      const qtr = quarter ?? "annual";
-      const isConsolidated = consolidated ?? true;
-      const fsDiv = isConsolidated ? "CFS" : "OFS";
-
-      const client = getDartClient();
-      const data = await client.request<FinancialResponse>(
-        "fnlttSinglAcnt.json",
-        {
-          corp_code: corpCode,
-          bsns_year: String(bsnsYear),
-          reprt_code: REPRT_CODE_MAP[qtr],
-          fs_div: fsDiv,
-        },
-      );
-
-      const accounts = extractAccounts(data.list, fsDiv);
-
-      // 회사명은 API 응답에 없으므로 입력값 사용
-      return formatFinancialSummary(
-        company,
-        bsnsYear,
-        qtr,
-        isConsolidated,
-        accounts,
-      );
-    },
+    execute: async (args) => executeGetFinancialSummary(args),
   });
-
-  // --- compare_financials ---
 
   server.addTool({
     name: "compare_financials",
@@ -374,58 +484,8 @@ export function registerFinancialTools(server: FastMCP) {
         .optional()
         .describe("Report period. Default: annual."),
     }),
-    execute: async ({ companies, year, quarter }) => {
-      const bsnsYear = year ?? new Date().getFullYear() - 1;
-      const qtr = quarter ?? "annual";
-
-      // 회사명 → 고유번호 변환
-      const resolved: { name: string; corpCode: string }[] = [];
-      for (const c of companies) {
-        const corpCode = resolveCorpCode(c);
-        // corp-code 데이터에서 정식 회사명 조회
-        const matches = searchCompanies(c);
-        const officialName =
-          matches.find((m) => m.corpCode === corpCode)?.corpName ?? c;
-        resolved.push({ name: officialName, corpCode });
-      }
-
-      const corpCodes = resolved.map((r) => r.corpCode).join(",");
-
-      const client = getDartClient();
-      const data = await client.request<FinancialResponse>(
-        "fnlttMultiAcnt.json",
-        {
-          corp_code: corpCodes,
-          bsns_year: String(bsnsYear),
-          reprt_code: REPRT_CODE_MAP[qtr],
-        },
-      );
-
-      // 회사별 데이터 분리 (CFS 우선)
-      const companyAccounts = new Map<
-        string,
-        Map<string, AccountData>
-      >();
-
-      for (const r of resolved) {
-        const items = data.list.filter(
-          (i) => i.corp_code === r.corpCode,
-        );
-        const hasCFS = items.some((i) => i.fs_div === "CFS");
-        const accounts = extractAccounts(items, hasCFS ? "CFS" : "OFS");
-        companyAccounts.set(r.corpCode, accounts);
-      }
-
-      return formatComparisonTable(
-        resolved,
-        companyAccounts,
-        bsnsYear,
-        qtr,
-      );
-    },
+    execute: async (args) => executeCompareFinancials(args),
   });
-
-  // --- get_full_financial_statements ---
 
   server.addTool({
     name: "get_full_financial_statements",
@@ -457,42 +517,6 @@ export function registerFinancialTools(server: FastMCP) {
             "CIS(포괄손익계산서), CF(현금흐름표), SCE(자본변동표), all(전체). Default: all.",
         ),
     }),
-    execute: async ({
-      company,
-      year,
-      quarter,
-      consolidated,
-      statement_type,
-    }) => {
-      const corpCode = resolveCorpCode(company);
-      const bsnsYear = year ?? new Date().getFullYear() - 1;
-      const qtr = quarter ?? "annual";
-      const fsDiv = (consolidated ?? true) ? "CFS" : "OFS";
-      const stmtType = statement_type ?? "all";
-
-      const client = getDartClient();
-      const data = await client.request<FullStatementResponse>(
-        "fnlttSinglAcntAll.json",
-        {
-          corp_code: corpCode,
-          bsns_year: String(bsnsYear),
-          reprt_code: REPRT_CODE_MAP[qtr],
-          fs_div: fsDiv,
-        },
-      );
-
-      const items =
-        stmtType === "all"
-          ? data.list
-          : data.list.filter((i) => i.sj_div === stmtType);
-
-      return formatFullStatements(
-        company,
-        bsnsYear,
-        qtr,
-        fsDiv === "CFS",
-        items,
-      );
-    },
+    execute: async (args) => executeGetFullFinancialStatements(args),
   });
 }
