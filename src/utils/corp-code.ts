@@ -101,73 +101,89 @@ export async function ensureCorpCodes(): Promise<void> {
 
   console.error("[OpenDART] 고유번호 데이터를 자동 다운로드합니다 (최초 1회)...");
 
-  try {
-    const url = `https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${apiKey}`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  const url = `https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${apiKey}`;
+  const maxRetries = 3;
+  const timeoutMs = 60_000;
 
-    if (!response.ok) {
-      throw new Error(`다운로드 실패: HTTP ${response.status}`);
-    }
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 1) {
+        console.error(`[OpenDART] 재시도 ${attempt}/${maxRetries}...`);
+      }
 
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("json")) {
-      const body = (await response.json()) as {
-        status: string;
-        message: string;
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (!response.ok) {
+        throw new Error(`다운로드 실패: HTTP ${response.status}`);
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType.includes("json")) {
+        const body = (await response.json()) as {
+          status: string;
+          message: string;
+        };
+        throw new Error(
+          `DART API 오류: ${body.message} (status: ${body.status})`,
+        );
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const zipBuffer = Buffer.from(arrayBuffer);
+      const xmlBuffer = extractFirstFileFromZip(zipBuffer);
+      const xmlString = xmlBuffer.toString("utf-8");
+
+      const parser = new XMLParser({
+        isArray: (_tagName: string, jPath: string) => jPath === "result.list",
+      });
+      const parsed = parser.parse(xmlString) as {
+        result: { list: CorpCodeXmlItem[] };
       };
-      throw new Error(
-        `DART API 오류: ${body.message} (status: ${body.status})`,
+      const items = parsed.result.list;
+
+      const byName: Record<string, string> = {};
+      const byStockCode: Record<string, string> = {};
+      const byCorpCode: Record<string, { name: string; stockCode: string }> =
+        {};
+
+      for (const item of items) {
+        const corpCode = String(item.corp_code).padStart(8, "0");
+        const corpName = String(item.corp_name).trim();
+        const rawStockCode = String(item.stock_code ?? "").trim();
+        const stockCode =
+          rawStockCode && rawStockCode !== "0"
+            ? rawStockCode.padStart(6, "0")
+            : "";
+
+        byName[corpName] = corpCode;
+        byCorpCode[corpCode] = { name: corpName, stockCode };
+        if (stockCode) {
+          byStockCode[stockCode] = corpCode;
+        }
+      }
+
+      mkdirSync(CACHE_DIR, { recursive: true });
+      writeFileSync(
+        CACHE_DATA_PATH,
+        JSON.stringify({ byName, byStockCode, byCorpCode }),
+        "utf-8",
       );
-    }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const zipBuffer = Buffer.from(arrayBuffer);
-    const xmlBuffer = extractFirstFileFromZip(zipBuffer);
-    const xmlString = xmlBuffer.toString("utf-8");
-
-    const parser = new XMLParser({
-      isArray: (_tagName: string, jPath: string) => jPath === "result.list",
-    });
-    const parsed = parser.parse(xmlString) as {
-      result: { list: CorpCodeXmlItem[] };
-    };
-    const items = parsed.result.list;
-
-    const byName: Record<string, string> = {};
-    const byStockCode: Record<string, string> = {};
-    const byCorpCode: Record<string, { name: string; stockCode: string }> = {};
-
-    for (const item of items) {
-      const corpCode = String(item.corp_code).padStart(8, "0");
-      const corpName = String(item.corp_name).trim();
-      const rawStockCode = String(item.stock_code ?? "").trim();
-      const stockCode =
-        rawStockCode && rawStockCode !== "0"
-          ? rawStockCode.padStart(6, "0")
-          : "";
-
-      byName[corpName] = corpCode;
-      byCorpCode[corpCode] = { name: corpName, stockCode };
-      if (stockCode) {
-        byStockCode[stockCode] = corpCode;
+      console.error(
+        `[OpenDART] 고유번호 다운로드 완료: ${items.length}개 기업`,
+      );
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (attempt < maxRetries) {
+        console.error(`[OpenDART] 다운로드 실패 (${msg}), 재시도 대기...`);
+        await new Promise((r) => setTimeout(r, 3_000));
+      } else {
+        console.error(`[OpenDART] 고유번호 자동 다운로드 실패: ${msg}`);
       }
     }
-
-    mkdirSync(CACHE_DIR, { recursive: true });
-    writeFileSync(
-      CACHE_DATA_PATH,
-      JSON.stringify({ byName, byStockCode, byCorpCode }),
-      "utf-8",
-    );
-
-    console.error(
-      `[OpenDART] 고유번호 다운로드 완료: ${items.length}개 기업`,
-    );
-  } catch (err) {
-    console.error(
-      "[OpenDART] 고유번호 자동 다운로드 실패:",
-      err instanceof Error ? err.message : err,
-    );
   }
 }
 
